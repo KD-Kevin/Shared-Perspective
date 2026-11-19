@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "devDependencies": {
+    "vitest": "^5.1.1"
+  },
+  "scripts": {
+    "start": "npm --prefix server start",
+    "client": "npm --prefix server run client --",
+    "coordinator": "npm --prefix server run coordinator",
+    "test": "npm --prefix server test",
+    "test:watch": "npm --prefix server run test:watch",
+    "typecheck": "npm --prefix server run typecheck"
+  }
+}
