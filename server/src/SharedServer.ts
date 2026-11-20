@@ -8,13 +8,14 @@ import { BINARY_HEADER_SIZE, BINARY_VERSION, BinaryRoute, isOwnerApp, isScopeId,
 import { ScopePolicy, type ScopeAccess } from "./ScopePolicy";
 import { readDataChange, SessionDataStore } from "./SessionData";
 import { User } from "./User";
-import type { Capability, ClientPresence, JoinRequest, NetworkMessage, ScopedCapability, ServerInfo, UserClient, UserProfileState } from "./protocol";
+import type { Capability, ClientPresence, JoinRequest, NetworkMessage, ScopedCapability, ServerInfo, ServerMode, UserClient, UserProfileState } from "./protocol";
 
 export interface ServerOptions {
     port: number;
     name: string;
     password: string;
     discoveryDirectory?: string;
+    mode?: ServerMode;
     workspaceScopes?: unknown;
 }
 
@@ -88,6 +89,11 @@ export class SharedServer {
             this.server.once("error", reject);
             this.server.once("close", () => reject(new Error("Server closed before it was ready.")));
             this.server.once("listening", () => {
+                // Standalone servers are direct-connect endpoints and never write hosted discovery records.
+                if (options.mode === "standalone") {
+                    resolve();
+                    return;
+                }
                 this.registration = publishLocalSession(options.discoveryDirectory ?? localSessionDirectory(), this.sessionId, this.port);
                 this.registration.then(() => resolve(), reject);
             });
@@ -128,7 +134,8 @@ export class SharedServer {
             name: this.options.name,
             passwordRequired: this.options.password.length > 0,
             clientCount: this.clients.size,
-            scopeProtocolVersion: SCOPE_PROTOCOL_VERSION
+            scopeProtocolVersion: SCOPE_PROTOCOL_VERSION,
+            mode: this.options.mode ?? "hosted"
         };
 
         this.send(socket, { type: "session.info", route: "sender", data: info });

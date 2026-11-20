@@ -5,6 +5,7 @@
   },
   "scripts": {
     "start": "npm --prefix server start",
+    "standalone": "npm --prefix server run standalone",
     "client": "npm --prefix server run client --",
     "coordinator": "npm --prefix server run coordinator",
     "test": "npm --prefix server test",

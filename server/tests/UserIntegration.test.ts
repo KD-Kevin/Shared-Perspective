@@ -349,3 +349,30 @@ it.skipIf(process.platform !== "win32")("serves both string stores through the W
         await rm(directory, { recursive: true, force: true });
     }
 });
+
+it("allows a direct standalone join without writing joined discovery records", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "shared-perspective-standalone-"));
+    const registry = join(directory, "sessions");
+    vi.stubEnv("SHARED_PERSPECTIVE_DISCOVERY_DIR", registry);
+    const profile = new LocalUserProfile(join(directory, "profile"));
+    const server = new SharedServer({ port: 0, name: "Standalone", password: "", discoveryDirectory: registry, mode: "standalone" });
+    transport.accept = socket => Reflect.get(server, "server").emit("connection", socket);
+    let client: SharedClient | undefined;
+
+    try {
+        await server.ready;
+        client = new SharedClient({ ownerApp: "godot", url: "ws://localhost:" + server.port, profile });
+        const messages: NetworkMessage[] = [];
+        client.on("message", message => messages.push(message));
+        await expect.poll(() => client?.localUser?.clients.size).toBe(1);
+        expect(messages.find(message => message.type === "session.info")?.data).toMatchObject({ mode: "standalone" });
+        await expect.poll(async () => (await profile.getVisitedServers()).length).toBe(1);
+        await expect(readdir(registry)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+        client?.close();
+        await server.close();
+        transport.accept = undefined;
+        vi.unstubAllEnvs();
+        await rm(directory, { recursive: true, force: true });
+    }
+});

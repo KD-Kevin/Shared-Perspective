@@ -1,20 +1,47 @@
-# Shared Perspective
+# ![Shared Perspective](docs/shared-perspective-banner.png)
 
-Shared Perspective hosts a common WebSocket session for IDE and editor clients. Code Together, Unity, Unreal, Godot, and Game Style Multiplayer can use the protocol independently. The server owns admission, identity, presence, chat and activity. Hosts and joined clients publish local discovery records. Adapter-specific events stay in their capability namespaces, and the binary scope is reserved for Game-Style Multiplayer.
+Shared Perspective hosts a common WebSocket session for IDE and game engine adapters on Windows. The server, local coordinator, and terminal client provide the shared foundation for the adapter targets listed below. The server owns admission, identity, presence, chat and activity. Hosted sessions and their joined clients publish local discovery records. Adapter-specific events stay in their capability namespaces, and the binary scope is reserved for Game-Style Multiplayer.
 
-## Run on Windows
+## Set up on Windows
 
-From the repository root:
+Install dependencies once from the repository root.
 
 ```powershell
 npm ci
 npm ci --prefix server
-npm run typecheck
-npm test
-npm start
 ```
 
-The server defaults to port `8080`. Set `PORT=0` in the environment to host another session on an available port. Set `SERVER_NAME` and `SERVER_PASSWORD` as needed. In another terminal, run:
+Run `npm run typecheck` and `npm test` to verify the checkout.
+
+### Hosted sessions
+
+Run `npm start` to host a session. The default port is `8080`. Set `SERVER_NAME` and `SERVER_PASSWORD` as needed. Set `PORT=0` to use an available port. Hosted sessions publish a local discovery record.
+
+### Standalone servers
+
+A standalone instance runs as its own process with its own session and port. You can run several on one machine alongside hosted sessions. Starting or stopping one affects only that instance. Use a different port for each server. If a port is already in use, the new instance exits and the existing server keeps running.
+
+**Start interactively**
+
+1. Double-click `start-standalone.bat`, or run `.\start-standalone.bat` from the repository root.
+2. Enter a session name and port. Press Enter at either prompt to use its default. The standalone port defaults to `8090`. Enter `0` to let Windows assign an available port.
+3. Connect using the machine's address and the port printed in the terminal. On the server machine, you can use `127.0.0.1`. Press Ctrl+C in that server's window to stop it.
+
+![Interactive launcher with the example name Workshop Alpha and port 8091](docs/standalone-interactive.png)
+
+**Start without prompts**
+
+1. Copy `start-standalone.example.bat` to a new `.bat` file in the repository root. Keep the copy beside the original so it can find the `server` folder.
+2. Edit the `SERVER_NAME` and `PORT` lines. Make a separate copy with a different port for each instance. Set `SERVER_PASSWORD` or `SHARED_PERSPECTIVE_SCOPES_FILE` in the launch environment if needed.
+3. Run the configured copy. It starts immediately and stays in the foreground. You can also use `npm run standalone` with the same environment variables.
+
+![Configured launcher with a fixed name and port, followed by its startup output](docs/standalone-configured.png)
+
+Standalone servers use direct addresses and stay out of hosted discovery. Clients can save them as favorites. After one app joins, other apps on that machine can use **Join Current Session**. Leaving the session disconnects local clients. The standalone server keeps running until you stop its process.
+
+### Join from a client
+
+In another terminal, run:
 
 ```powershell
 npm run client -- --discover
@@ -28,8 +55,8 @@ The terminal client shows the active local session or prompts for a server. Use 
 ## Discovery contract for adapters
 
 1. Read JSON records directly under `%LOCALAPPDATA%\Shared Perspective\sessions` on Windows. On other platforms, use `$XDG_DATA_HOME/Shared Perspective/sessions` or `~/.local/share/Shared Perspective/sessions` when the variable is unset. `SHARED_PERSPECTIVE_DISCOVERY_DIR` overrides the directory for every app.
-2. A host publishes `<sessionId>.json` containing `{"version":1,"sessionId":"<UUID>","port":12345}` after binding. Use loopback for that port and remove the file when the host shuts down. The port must be an integer from 1 to 65535, and the session ID must match the filename.
-3. After an accepted join, a client publishes `joined-<connectionId>.json`, with a newly generated connection UUID, in the same directory.
+2. A hosted server publishes `<sessionId>.json` containing `{"version":1,"sessionId":"<UUID>","port":12345}` after binding. Use loopback for that port and remove the file when the host shuts down. The port must be an integer from 1 to 65535, and the session ID must match the filename.
+3. After an accepted join to a hosted server, a client publishes `joined-<connectionId>.json`, with a newly generated connection UUID, in the same directory.
 
    ```json
    {"version":1,"connectionId":"<UUID>","sessionId":"<UUID>","url":"ws://teammate:8080","expiresAt":1800000000000}
@@ -40,7 +67,7 @@ The terminal client shows the active local session or prompts for a server. Use 
 4. Skip invalid, expired, or incomplete records. For each distinct session ID and URL, open a short WebSocket probe and check for `session.info` with route `sender` and the matching `data.sessionId`. Read the name, password requirement, and client count from that reply and close the probe. Display one live result per session ID, preferring the host's loopback endpoint if both kinds of record are present.
 5. A selected app opens its own connection to the discovered endpoint. Verify the session ID again on that connection before sending `session.join`. Each successful join can keep the session discoverable for additional local apps, even after the app that found it first disconnects.
 
-The TypeScript CLI uses the same file contract for both publication and discovery. IDE and engine adapters can implement the contract directly in their own language.
+The TypeScript CLI uses the same file contract for both publication and discovery. IDE and engine adapters can implement the contract directly in their own language. A server advertises its mode in the optional session.info data field `mode` (`hosted` or `standalone`). Treat a missing mode as hosted. For standalone sessions, skip discovery publication and keep the normal connection heartbeat.
 
 ## Users and the shared local profile
 
@@ -57,7 +84,7 @@ The TypeScript `SharedClient` handles discovery, joining, and maintaining the gr
 - Preference names use lowercase letters, digits, periods, underscores, and hyphens, start with a letter, and are at most 64 characters. Each preference is a JSON value under `preferences/<hex-encoded UTF-8 name>.json`. Accessors read current data from disk. Separate files let different apps edit different settings concurrently.
 - Visiting and favoriting are independent. After a successful join, write `visited/<sha256-of-normalized-endpoint>.json` with `url`, `sessionId`, `name`, and `visitedAt` (UTC Unix milliseconds). Store explicit favorites under `favorites` with the same key and fields except `visitedAt`. Normalize a root endpoint without a trailing slash. The endpoint key allows revisits to survive a session restart. The local lists carry no passwords.
 
-## Supported adapter targets
+## Intended adapter targets
 
 | Adapter | Owner app | Workspace capability |
 |---|---|---|

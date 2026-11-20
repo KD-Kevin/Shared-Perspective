@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { discoverLocalSessions } from "../src/LocalDiscovery";
 import { SharedServer } from "../src/SharedServer";
-import type { ServerInfo } from "../src/protocol";
+import type { ServerInfo, ServerMode } from "../src/protocol";
 
 const replies = vi.hoisted(() => new Map<string, ServerInfo>());
 
@@ -48,8 +48,8 @@ describe("local session discovery", () => {
         }
     });
 
-    async function start(name: string, password = ""): Promise<SharedServer> {
-        const server = new SharedServer({ port: 0, name, password, discoveryDirectory: directory });
+    async function start(name: string, password = "", mode: ServerMode = "hosted"): Promise<SharedServer> {
+        const server = new SharedServer({ port: 0, name, password, discoveryDirectory: directory, mode });
         servers.push(server);
         await server.ready;
         return server;
@@ -97,6 +97,33 @@ describe("local session discovery", () => {
         const sessions = await discoverLocalSessions(directory);
         expect(sessions.map(session => session.sessionId)).toEqual([current.sessionId]);
         expect(sessions.some(session => session.sessionId === dead.sessionId)).toBe(false);
+    });
+
+    it("runs multiple standalone listeners alongside a host without publishing or removing hosted records", async () => {
+        const [hosted, first, second] = await Promise.all([
+            start("Hosted"), start("Standalone A", "", "standalone"), start("Standalone B", "", "standalone")
+        ]);
+        reply(hosted, "Hosted");
+        reply(first, "Standalone A");
+        reply(second, "Standalone B");
+
+        expect(new Set([hosted.port, first.port, second.port]).size).toBe(3);
+        expect(await readdir(directory)).toEqual([`${hosted.sessionId}.json`]);
+        expect((await discoverLocalSessions(directory)).map(session => session.sessionId)).toEqual([hosted.sessionId]);
+
+        await first.close();
+        expect(second.port).toBeGreaterThan(0);
+        expect((await discoverLocalSessions(directory)).map(session => session.sessionId)).toEqual([hosted.sessionId]);
+    });
+
+    it("leaves the host and its registration in place after a standalone port collision", async () => {
+        const hosted = await start("Hosted");
+        const collision = new SharedServer({ port: hosted.port, name: "Collision", password: "", discoveryDirectory: directory, mode: "standalone" });
+        servers.push(collision);
+        await expect(collision.ready).rejects.toMatchObject({ code: "EADDRINUSE" });
+        await collision.close();
+        expect(hosted.port).toBeGreaterThan(0);
+        expect(await readdir(directory)).toEqual([`${hosted.sessionId}.json`]);
     });
 
     it("removes only its own registration on repeated close calls", async () => {

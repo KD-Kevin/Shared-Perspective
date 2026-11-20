@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import WebSocket from "ws";
-import { discoverLocalSessions, localSessionDirectory, registerJoinedSession } from "./LocalDiscovery";
+import { discoverLocalSessions, localSessionDirectory, registerJoinedSession, startSessionHeartbeat } from "./LocalDiscovery";
 import { LocalUserProfile, type ProfileSettings, type SavedServer } from "./LocalUserProfile";
 import { SCOPE_PROTOCOL_VERSION } from "./protocol";
 import { readDataChange, SessionDataStore } from "./SessionData";
@@ -203,7 +203,12 @@ export class SharedClient extends EventEmitter<SharedClientEvents> {
             const server = this.server;
             if (server) {
                 const report = (error: unknown): void => { this.emit("localError", error); };
-                void registerJoinedSession(this.socket, server.sessionId, localSessionDirectory(), report).catch(report);
+                if (this.serverInfo?.mode === "standalone") {
+                    // Retain heartbeat and reconnect behavior without advertising the endpoint to hosted discovery.
+                    this.socket.once("close", startSessionHeartbeat(this.socket));
+                } else {
+                    void registerJoinedSession(this.socket, server.sessionId, localSessionDirectory(), report).catch(report);
+                }
                 void this.profile?.recordVisit(server).catch(report);
             }
             this.emit("joined", result);

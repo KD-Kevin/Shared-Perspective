@@ -17,12 +17,15 @@ export interface NetworkMessage {
     data?: unknown;
 }
 
+export type ServerMode = "hosted" | "standalone";
+
 export interface ServerInfo {
     sessionId: string;
     name: string;
     passwordRequired: boolean;
     clientCount: number;
     scopeProtocolVersion?: number;
+    mode?: ServerMode;
 }
 
 export interface ScopeGrant {

@@ -81,6 +81,14 @@ export function parseEndpoint(value: unknown): { url: string; port: number } | u
     }
 }
 
+export function startSessionHeartbeat(socket: WebSocket): () => void {
+    const heartbeat = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.ping();
+    }, HEARTBEAT_MS);
+    heartbeat.unref();
+    return () => clearInterval(heartbeat);
+}
+
 // Call after an accepted join. Each socket owns its record and refreshes it only after a pong.
 export async function registerJoinedSession(socket: WebSocket, sessionId: string, directory: string, onError: (error: unknown) => void): Promise<void> {
     const endpoint = parseEndpoint(socket.url);
@@ -100,14 +108,10 @@ export async function registerJoinedSession(socket: WebSocket, sessionId: string
         void pending.catch(onError).finally(() => { pending = undefined; });
     };
 
-    const heartbeat = setInterval(() => {
-        if (socket.readyState === WebSocket.OPEN) socket.ping();
-    }, HEARTBEAT_MS);
-    heartbeat.unref();
-
+    const stopHeartbeat = startSessionHeartbeat(socket);
     socket.on("pong", renew);
     socket.once("close", () => {
-        clearInterval(heartbeat);
+        stopHeartbeat();
         socket.off("pong", renew);
         void Promise.resolve(pending).catch(() => undefined)
             .then(() => rm(join(directory, name), { force: true }))

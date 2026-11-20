@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "tsx src/index.ts",
+    "standalone": "tsx src/index.ts --standalone",
     "client": "tsx src/client.ts",
     "coordinator": "tsx src/local-session.ts",
     "test": "vitest run",
